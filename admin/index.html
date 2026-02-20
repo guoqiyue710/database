@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>InLight 管理后台</title>
+  <style>
+    :root {
+      --bg: #f6f4ef;
+      --card: #ffffff;
+      --text: #2c2a27;
+      --muted: #6f6a63;
+      --accent: #bc6c25;
+      --border: #e6e2db;
+    }
+    body {
+      margin: 0;
+      font-family: "Noto Serif SC", "Noto Sans SC", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .wrap { max-width: 1100px; margin: 40px auto; padding: 0 16px; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      box-shadow: 0 12px 30px rgba(188, 108, 37, 0.08);
+      margin-bottom: 18px;
+    }
+    h1 { font-size: 22px; letter-spacing: 0.1em; margin: 0 0 12px; }
+    label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+    input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 14px;
+    }
+    button {
+      border: none;
+      background: var(--accent);
+      color: white;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    button.secondary {
+      background: #d7cbbd;
+      color: #3d362f;
+    }
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .muted { color: var(--muted); font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { border-bottom: 1px solid var(--border); padding: 8px; vertical-align: top; }
+    th { text-align: left; color: var(--muted); font-weight: 600; }
+    .hidden { display: none; }
+    .pill { padding: 2px 8px; border-radius: 999px; background: #f2e8dc; color: #7c4a1b; font-size: 11px; }
+    pre { white-space: pre-wrap; word-break: break-word; font-size: 12px; margin: 0; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card" id="login-card">
+      <h1>InLight 管理后台</h1>
+      <div class="row">
+        <div style="flex:1; min-width:200px;">
+          <label>管理员邮箱</label>
+          <input id="email" type="email" placeholder="admin@example.com" />
+        </div>
+        <div style="flex:1; min-width:200px;">
+          <label>管理员密码</label>
+          <input id="password" type="password" placeholder="********" />
+        </div>
+        <div style="margin-top: 22px;">
+          <button id="login-btn">登录</button>
+        </div>
+      </div>
+      <div class="muted" id="login-msg"></div>
+    </div>
+
+    <div class="card hidden" id="panel">
+      <div class="row" style="justify-content: space-between;">
+        <h1>测评数据</h1>
+        <div class="row">
+          <button class="secondary" id="refresh-btn">刷新</button>
+          <button class="secondary" id="export-csv">导出 CSV</button>
+          <button class="secondary" id="export-xlsx">导出 Excel</button>
+          <button id="logout-btn">退出</button>
+        </div>
+      </div>
+      <div class="muted" id="status"></div>
+      <div style="overflow:auto;">
+        <table id="table">
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th>测评</th>
+              <th>兑换码</th>
+              <th>总分</th>
+              <th>维度</th>
+              <th>答案</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = window.location.origin;
+    const tokenKey = 'adminToken';
+
+    const $loginCard = document.getElementById('login-card');
+    const $panel = document.getElementById('panel');
+    const $loginMsg = document.getElementById('login-msg');
+    const $status = document.getElementById('status');
+    const $tbody = document.querySelector('#table tbody');
+
+    function setStatus(msg) {
+      $status.textContent = msg || '';
+    }
+
+    function showPanel() {
+      $loginCard.classList.add('hidden');
+      $panel.classList.remove('hidden');
+    }
+
+    function showLogin() {
+      $loginCard.classList.remove('hidden');
+      $panel.classList.add('hidden');
+    }
+
+    async function apiFetch(path, options = {}) {
+      const token = localStorage.getItem(tokenKey);
+      const headers = Object.assign({ 'Content-Type': 'application/json' }, options.headers || {});
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+      const text = await res.text();
+      let json = null;
+      try { json = JSON.parse(text); } catch (e) {}
+      if (!res.ok) {
+        const message = (json && json.error) ? json.error : text;
+        throw new Error(message || '请求失败');
+      }
+      return json || {};
+    }
+
+    async function login() {
+      $loginMsg.textContent = '';
+      const email = document.getElementById('email').value.trim().toLowerCase();
+      const password = document.getElementById('password').value;
+      if (!email || !password) {
+        $loginMsg.textContent = '请输入邮箱和密码';
+        return;
+      }
+      try {
+        const data = await apiFetch('/api/admin/login', {
+          method: 'POST',
+          body: JSON.stringify({ email, password })
+        });
+        localStorage.setItem(tokenKey, data.token);
+        showPanel();
+        await loadRecords();
+      } catch (err) {
+        $loginMsg.textContent = String(err.message || err);
+      }
+    }
+
+    async function loadRecords() {
+      setStatus('加载中...');
+      try {
+        const data = await apiFetch('/api/admin/records?limit=200');
+        renderRows(data.data || []);
+        setStatus(`共 ${data.count || 0} 条记录（显示最新 200 条）`);
+      } catch (err) {
+        setStatus(String(err.message || err));
+      }
+    }
+
+    function renderRows(rows) {
+      $tbody.innerHTML = '';
+      rows.forEach((row) => {
+        const tr = document.createElement('tr');
+        const created = row.created_at ? new Date(row.created_at).toLocaleString() : '';
+        const dims = row.dimension_scores ? JSON.stringify(row.dimension_scores) : '';
+        const answers = row.answers ? JSON.stringify(row.answers) : '';
+        tr.innerHTML = `
+          <td>${created}</td>
+          <td><span class="pill">${row.test_name || ''}</span></td>
+          <td>${row.redeem_code || ''}</td>
+          <td>${row.total_score ?? ''}</td>
+          <td><pre>${dims}</pre></td>
+          <td><pre>${answers}</pre></td>
+        `;
+        $tbody.appendChild(tr);
+      });
+    }
+
+    async function exportCsv() {
+      const token = localStorage.getItem(tokenKey);
+      if (!token) return;
+      const res = await fetch(`${API_BASE}/api/admin/export`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'submissions.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    async function exportXlsx() {
+      setStatus('生成 Excel 中...');
+      try {
+        const data = await apiFetch('/api/admin/records?limit=500');
+        const rows = data.data || [];
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'submissions');
+        XLSX.writeFile(wb, 'submissions.xlsx');
+        setStatus('Excel 已下载');
+      } catch (err) {
+        setStatus(String(err.message || err));
+      }
+    }
+
+    function logout() {
+      localStorage.removeItem(tokenKey);
+      showLogin();
+    }
+
+    document.getElementById('login-btn').addEventListener('click', login);
+    document.getElementById('refresh-btn').addEventListener('click', loadRecords);
+    document.getElementById('export-csv').addEventListener('click', exportCsv);
+    document.getElementById('export-xlsx').addEventListener('click', exportXlsx);
+    document.getElementById('logout-btn').addEventListener('click', logout);
+
+    if (localStorage.getItem(tokenKey)) {
+      showPanel();
+      loadRecords();
+    }
+  </script>
+</body>
+</html>

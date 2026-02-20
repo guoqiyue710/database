@@ -1,0 +1,16 @@
+{
+  "name": "inlight-assessment-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "InLight 测评数据后台（Vercel + Supabase）",
+  "main": "index.js",
+  "scripts": {
+    "create-admin": "node scripts/create-admin.js",
+    "seed-redeem-codes": "node scripts/seed-redeem-codes.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2"
+  }
+}
