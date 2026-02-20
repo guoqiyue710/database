@@ -78,15 +78,49 @@ module.exports = async (req, res) => {
     client_time: clientTime
   };
 
-  const { error: insertError } = await supabase
+  const { data: existing, error: existingError } = await supabase
     .from('submissions')
-    .insert(insertPayload);
+    .select('id')
+    .eq('redeem_code', redeemCode)
+    .eq('test_name', testName)
+    .single();
 
-  if (insertError) {
+  if (existingError && existingError.code !== 'PGRST116') {
     res.statusCode = 500;
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ error: 'Failed to save submission' }));
+    res.end(JSON.stringify({ error: 'Failed to check existing submission' }));
     return;
+  }
+
+  if (existing && existing.id) {
+    const { error: updateError } = await supabase
+      .from('submissions')
+      .update({
+        answers,
+        total_score: totalScore,
+        dimension_scores: dimensionScores,
+        client_time: clientTime,
+        created_at: new Date().toISOString()
+      })
+      .eq('id', existing.id);
+
+    if (updateError) {
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'Failed to update submission' }));
+      return;
+    }
+  } else {
+    const { error: insertError } = await supabase
+      .from('submissions')
+      .insert(insertPayload);
+
+    if (insertError) {
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'Failed to save submission' }));
+      return;
+    }
   }
 
   const { error: updateError } = await supabase
