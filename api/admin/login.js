@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { supabase } = require('../_lib/supabase');
 const { setCorsHeaders, handleOptions } = require('../_lib/cors');
+const { readJson } = require('../_lib/body');
 
 module.exports = async (req, res) => {
   if (handleOptions(req, res)) return;
@@ -21,9 +22,10 @@ module.exports = async (req, res) => {
 
   let body = {};
   try {
-    body = JSON.parse(req.body || '{}');
+    body = await readJson(req);
   } catch (e) {
     res.statusCode = 400;
+    res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ error: 'Invalid JSON' }));
     return;
   }
@@ -44,6 +46,7 @@ module.exports = async (req, res) => {
 
   if (error || !admin) {
     res.statusCode = 401;
+    res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ error: 'Invalid credentials' }));
     return;
   }
@@ -51,6 +54,7 @@ module.exports = async (req, res) => {
   const ok = await bcrypt.compare(password, admin.password_hash);
   if (!ok) {
     res.statusCode = 401;
+    res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ error: 'Invalid credentials' }));
     return;
   }
@@ -62,5 +66,6 @@ module.exports = async (req, res) => {
   );
 
   res.statusCode = 200;
+  res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify({ ok: true, token }));
 };

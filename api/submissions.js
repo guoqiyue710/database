@@ -1,5 +1,6 @@
 const { supabase } = require('./_lib/supabase');
 const { setCorsHeaders, handleOptions } = require('./_lib/cors');
+const { readJson } = require('./_lib/body');
 
 function normalizeCode(code) {
   return String(code || '').trim().toUpperCase();
@@ -17,9 +18,10 @@ module.exports = async (req, res) => {
 
   let body = {};
   try {
-    body = JSON.parse(req.body || '{}');
+    body = await readJson(req);
   } catch (e) {
     res.statusCode = 400;
+    res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ error: 'Invalid JSON' }));
     return;
   }
@@ -33,6 +35,7 @@ module.exports = async (req, res) => {
 
   if (!testName || !redeemCode) {
     res.statusCode = 400;
+    res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ error: 'testName and redeemCode are required' }));
     return;
   }
@@ -45,12 +48,14 @@ module.exports = async (req, res) => {
 
   if (codeError || !codeRow) {
     res.statusCode = 404;
+    res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ error: 'Invalid code' }));
     return;
   }
 
   if (!codeRow.is_active) {
     res.statusCode = 403;
+    res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ error: 'Code disabled' }));
     return;
   }
@@ -59,6 +64,7 @@ module.exports = async (req, res) => {
   const max = codeRow.max_uses || 1;
   if (used >= max) {
     res.statusCode = 409;
+    res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ error: 'Code already used' }));
     return;
   }
@@ -78,6 +84,7 @@ module.exports = async (req, res) => {
 
   if (insertError) {
     res.statusCode = 500;
+    res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ error: 'Failed to save submission' }));
     return;
   }
@@ -92,10 +99,12 @@ module.exports = async (req, res) => {
 
   if (updateError) {
     res.statusCode = 500;
+    res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ error: 'Saved but failed to update code usage' }));
     return;
   }
 
   res.statusCode = 200;
+  res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify({ ok: true }));
 };
